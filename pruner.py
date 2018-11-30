@@ -7,12 +7,14 @@ from torchvision import datasets, transforms
 import numpy as np
 from collections import OrderedDict
 import itertools
+
 class Pruner(nn.Module):
-    def __init__(self, model):
+    def __init__(self, model, thres, function="corrs"):
         super(Pruner, self).__init__()
         self.model = model
         self.to_remove = {}
         self.next_layer = {}
+        self.thres = thres
 
         layer_names = list(model.pruning_layers._modules.keys())
         for i, layer_name in enumerate(layer_names):
@@ -21,17 +23,11 @@ class Pruner(nn.Module):
                 layer.layer_name = layer_name
                 self.next_layer[layer_name] = \
                     model.pruning_layers._modules.get(layer_names[i+1])
-                layer.register_forward_hook(self.min_L1)
+                if(function == "corrs"):
+                    layer.register_forward_hook(self.correlations)
+                elif(function == "l1"):
+                    layer.register_forward_hook(self.min_L1)
             i += 1
-
-    def min_L1(self, layer, input, output):
-        activs = np.abs(input[0].numpy())
-        L1 = np.apply_over_axes(np.sum, activs, [0,2,3])
-        L1 = L1.reshape(L1.shape[1])
-        self.to_remove[layer.layer_name] = [np.argmin(L1)]
-
-    def forward(self, x):
-        return self.model(x)
 
     def prune(self):
         i = 0
@@ -58,6 +54,48 @@ class Pruner(nn.Module):
                 np_weights = np.delete(np_weights, nodes_to_remove, axis=1)
                 next_layer.weight = Parameter(torch.from_numpy(np_weights))#.cuda())
             i += 1
+
+    def forward(self, x):
+        return self.model(x)
+    '''
+    PRUNING FUNCTIONS
+    START HERE
+    '''
+    def min_L1(self, layer, input, output):
+        activs = np.abs(input[0].numpy())
+        L1 = np.apply_over_axes(np.sum, activs, [0,2,3])
+        L1 = L1.reshape(L1.shape[1])
+        self.to_remove[layer.layer_name] = [np.argmin(L1)]
+
+    def correlations(self, layer, input, output):
+        h, w = output.shape[2], output.shape[3]
+        # get correlations
+        print(output.shape)
+        n_filters = output.shape[1]
+        corrs = np.zeros((n_filters, n_filters))
+        for i in range(h):
+            for j in range(w):
+                ap = output[:,:,i,j]
+                corrs += np.corrcoef(ap.numpy().T)
+        corrs /= n_filters
+
+        # find filter pairs above correlation threshold
+        corrs = np.abs(corrs)
+        np.fill_diagonal(corrs, 0)
+        sorted_corr = np.sort(corrs.ravel())
+
+        nodes_to_prune = np.where((self.thres <= corrs[:,:]))
+        rows, cols = nodes_to_prune[0], nodes_to_prune[1]
+
+        # get filters to remove
+        for r in range(0, len(rows)):
+            r_i = rows[r]
+            if(r_i > -1):
+              ind = np.where(cols[r] == rows[:])
+              rows[ind] = -1
+              ind = np.where(rows[r] == rows[r+1:])
+              rows[ind] = -1
+        self.to_remove[layer.layer_name] = rows[np.where(rows[:] > -1)]
 
 if __name__ == '__main__':
     class Net(nn.Module):
@@ -166,3 +204,4 @@ if __name__ == '__main__':
     test(pruning_model, device, val_loader)
 
     pruning_model.prune()
+
