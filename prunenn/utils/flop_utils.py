@@ -1,12 +1,11 @@
-import torch.nn as nn
-import torch
-import numpy as np
-
 '''
 Utility functions to measure floating point operations (FLOPs)
 
 Credit: https://github.com/sovrasov/flops-counter.pytorch/blob/master/ptflops/flops_counter.py
 '''
+
+import torch
+import numpy as np
 
 def flops_to_string(flops):
     if flops // 10**9 > 0:
@@ -44,7 +43,6 @@ def add_flops_counting_methods(net_main_module):
 
     return net_main_module
 
-
 def compute_average_flops_cost(self):
     """
     A method that will be available after add_flops_counting_methods() is called
@@ -62,7 +60,6 @@ def compute_average_flops_cost(self):
 
     return flops_sum / batches_count
 
-
 def start_flops_count(self):
     """
     A method that will be available after add_flops_counting_methods() is called
@@ -74,7 +71,6 @@ def start_flops_count(self):
     """
     add_batch_counter_hook_function(self)
     self.apply(add_flops_counter_hook_function)
-
 
 def stop_flops_count(self):
     """
@@ -88,7 +84,6 @@ def stop_flops_count(self):
     remove_batch_counter_hook_function(self)
     self.apply(remove_flops_counter_hook_function)
 
-
 def reset_flops_count(self):
     """
     A method that will be available after add_flops_counting_methods() is called
@@ -100,17 +95,14 @@ def reset_flops_count(self):
     add_batch_counter_variables_or_reset(self)
     self.apply(add_flops_counter_variable_or_reset)
 
-
 def add_flops_mask(module, mask):
     def add_flops_mask_func(module):
         if isinstance(module, torch.nn.Conv2d):
             module.__mask__ = mask
     module.apply(add_flops_mask_func)
 
-
 def remove_flops_mask(module):
     module.apply(add_flops_mask_variable_or_reset)
-
 
 # ---- Internal functions
 def is_supported_instance(module):
@@ -124,10 +116,8 @@ def is_supported_instance(module):
 
     return False
 
-
 def empty_flops_counter_hook(module, input, output):
     module.__flops__ += 0
-
 
 def upsample_flops_counter_hook(module, input, output):
     output_size = output[0]
@@ -147,12 +137,10 @@ def relu_flops_counter_hook(module, input, output):
 
     module.__flops__ += active_elements_count
 
-
 def linear_flops_counter_hook(module, input, output):
     input = input[0]
     batch_size = input.shape[0]
     module.__flops__ += batch_size * input.shape[1] * output.shape[1]
-
 
 def pool_flops_counter_hook(module, input, output):
     input = input[0]
@@ -201,18 +189,15 @@ def conv_flops_counter_hook(conv_module, input, output):
 
     conv_module.__flops__ += overall_flops
 
-
 def batch_counter_hook(module, input, output):
     # Can have multiple inputs, getting the first one
     input = input[0]
     batch_size = input.shape[0]
     module.__batch_counter__ += batch_size
 
-
 def add_batch_counter_variables_or_reset(module):
 
     module.__batch_counter__ = 0
-
 
 def add_batch_counter_hook_function(module):
     if hasattr(module, '__batch_counter_handle__'):
@@ -221,17 +206,14 @@ def add_batch_counter_hook_function(module):
     handle = module.register_forward_hook(batch_counter_hook)
     module.__batch_counter_handle__ = handle
 
-
 def remove_batch_counter_hook_function(module):
     if hasattr(module, '__batch_counter_handle__'):
         module.__batch_counter_handle__.remove()
         del module.__batch_counter_handle__
 
-
 def add_flops_counter_variable_or_reset(module):
     if is_supported_instance(module):
         module.__flops__ = 0
-
 
 def add_flops_counter_hook_function(module):
     if is_supported_instance(module):
@@ -241,8 +223,8 @@ def add_flops_counter_hook_function(module):
         if isinstance(module, torch.nn.Conv2d):
             handle = module.register_forward_hook(conv_flops_counter_hook)
         elif isinstance(module, torch.nn.ReLU) or isinstance(module, torch.nn.PReLU) \
-             or isinstance(module, torch.nn.ELU) or isinstance(module, torch.nn.LeakyReLU) \
-             or isinstance(module, torch.nn.ReLU6):
+                or isinstance(module, torch.nn.ELU) or isinstance(module, torch.nn.LeakyReLU) \
+                or isinstance(module, torch.nn.ReLU6):
             handle = module.register_forward_hook(relu_flops_counter_hook)
         elif isinstance(module, torch.nn.Linear):
             handle = module.register_forward_hook(linear_flops_counter_hook)
@@ -256,14 +238,11 @@ def add_flops_counter_hook_function(module):
             handle = module.register_forward_hook(empty_flops_counter_hook)
         module.__flops_handle__ = handle
 
-
 def remove_flops_counter_hook_function(module):
     if is_supported_instance(module):
         if hasattr(module, '__flops_handle__'):
             module.__flops_handle__.remove()
             del module.__flops_handle__
-# --- Masked flops counting
-
 
 # Also being run in the initialization
 def add_flops_mask_variable_or_reset(module):
